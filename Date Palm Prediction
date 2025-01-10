@@ -1,0 +1,305 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# # Importing the Libraries
+
+# In[1]:
+
+
+import numpy as np
+import cv2
+import os
+import seaborn as sns
+import matplotlib.pyplot as plt
+from skimage.feature import greycomatrix, greycoprops
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.preprocessing import StandardScaler
+
+
+# # Loading Imagres from the folder
+
+# In[2]:
+
+
+def load_images_from_folder(folder):
+    images = []
+    labels = []
+    if not os.path.exists(folder):
+        raise FileNotFoundError(f"The folder {folder} does not exist.")
+    
+    for class_label in os.listdir(folder):
+        class_path = os.path.join(folder, class_label)
+        if os.path.isdir(class_path):
+            for filename in os.listdir(class_path):
+                img_path = os.path.join(class_path, filename)
+                img = cv2.imread(img_path, cv2.IMREAD_COLOR)
+                if img is not None:
+                    images.append(img)
+                    labels.append(class_label)
+                else:
+                    print(f"Warning: Failed to load image {img_path}")
+        else:
+            print(f"Warning: {class_path} is not a directory.")
+    return images, labels
+
+
+dataset_path = 'C:\\Users\\tusha\\Date Palm Data 2\\white scale'  
+images, labels = load_images_from_folder(dataset_path)
+
+
+# # Implement Feature Extraction Techniques GLCM and HSV
+
+# In[6]:
+
+
+def extract_glcm_features(image, distances=[5], angles=[0]):
+    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    glcm = greycomatrix(gray_image, distances=distances, angles=angles, levels=256, symmetric=True, normed=True)
+    contrast = greycoprops(glcm, 'contrast')[0,0]
+    dissimilarity = greycoprops(glcm, 'dissimilarity')[0,0]
+    homogeneity = greycoprops(glcm, 'homogeneity')[0,0]
+    energy = greycoprops(glcm, 'energy')[0,0]
+    correlation = greycoprops(glcm, 'correlation')[0,0]
+    ASM = greycoprops(glcm, 'ASM')[0,0]
+    return [contrast, dissimilarity, homogeneity, energy, correlation, ASM]
+
+def extract_hsv_features(image):
+    hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(hsv_image)
+    h_mean, h_std = h.mean(), h.std()
+    s_mean, s_std = s.mean(), s.std()
+    v_mean, v_std = v.mean(), v.std()
+    return [h_mean, h_std, s_mean, s_std, v_mean, v_std]
+
+def extract_features(image):
+    glcm_features = extract_glcm_features(image)
+    hsv_features = extract_hsv_features(image)
+    return glcm_features + hsv_features
+
+features = [extract_features(img) for img in images]
+
+
+# # Encode Labels
+
+# In[7]:
+
+
+from sklearn.preprocessing import LabelEncoder
+
+label_encoder = LabelEncoder()
+encoded_labels = label_encoder.fit_transform(labels)
+
+
+# # Performing Train-Test-Split 
+
+# In[8]:
+
+
+X_train, X_test, y_train, y_test = train_test_split(features, encoded_labels, test_size=0.2, random_state=42)
+
+
+# In[10]:
+
+
+y_train.shape
+
+
+# In[11]:
+
+
+y_test.shape
+
+
+# # Feature Scaling
+
+# In[14]:
+
+
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+
+# # Random Forest (RF) Model
+
+# In[15]:
+
+
+# Train the model
+clf = RandomForestClassifier(n_estimators=100, random_state=42)
+clf.fit(X_train, y_train)
+
+
+# In[16]:
+
+
+y_pred = clf.predict(X_test)
+accuracy = accuracy_score(y_test, y_pred)
+report = classification_report(y_test, y_pred, target_names=label_encoder.classes_)
+
+print(f'Accuracy: {accuracy}')
+print('Classification Report:')
+print(report)
+
+
+# In[17]:
+
+
+from sklearn.metrics import confusion_matrix
+cm = confusion_matrix(y_test, y_pred)
+
+fig, ax = plt.subplots(figsize=(6,6))
+sns.heatmap(cm, annot = True, linewidths = .5, ax = ax)
+
+
+# In[18]:
+
+
+from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
+precision = precision_score(y_test, y_pred, average='weighted')  # Use 'weighted' averaging for multiclass
+recall = recall_score(y_test, y_pred, average='weighted')  # Use 'weighted' averaging for multiclass
+f1 = f1_score(y_test, y_pred, average='weighted')  # Use 'weighted' averaging for multiclass
+
+print("Precision:", precision)
+print("Recall:", recall)
+print("F1 Score:", f1)
+
+
+# # Support Vector Machine (SVM)
+
+# In[19]:
+
+
+from sklearn.svm import SVC
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
+
+# SVM model with a linear kernel and standard scaling
+model = make_pipeline(StandardScaler(), SVC(kernel='linear', random_state=42))
+model.fit(X_train, y_train)
+
+
+# In[20]:
+
+
+from sklearn.metrics import classification_report, accuracy_score
+
+y_pred = model.predict(X_test)
+print('Accuracy:', accuracy_score(y_test, y_pred))
+print('Classification Report:')
+print(classification_report(y_test, y_pred))
+
+
+# In[21]:
+
+
+from sklearn.metrics import confusion_matrix
+cm = confusion_matrix(y_test, y_pred)
+
+fig, ax = plt.subplots(figsize=(6,6))
+sns.heatmap(cm, annot = True, linewidths = .5, ax = ax)
+
+
+# # Light Gradient Boosting Machine (LightGBM)
+
+# In[22]:
+
+
+import lightgbm as lgb
+
+params = {
+    'objective': 'multiclass',
+    'num_class': 4,
+    'metric': 'multi_error',
+    'boosting': 'gbdt',
+    'num_leaves': 31,
+    'learning_rate': 0.05,
+    'feature_fraction': 0.9,
+    'bagging_fraction': 0.8,
+    'bagging_freq': 5,
+    'verbose': 0
+}
+
+
+# In[23]:
+
+
+train_data = lgb.Dataset(X_train, label=y_train)
+test_data = lgb.Dataset(X_test, label=y_test)
+
+
+# In[26]:
+
+
+gbm = lgb.train(params, train_data, num_boost_round=90, valid_sets=[test_data])
+
+
+# In[27]:
+
+
+y_pred = gbm.predict(X_test, num_iteration=gbm.best_iteration)
+y_pred = np.argmax(y_pred, axis=1)
+accuracy = accuracy_score(y_test, y_pred)
+print("Accuracy:", accuracy)
+print('Classification Report:')
+print(classification_report(y_test, y_pred))
+
+
+# In[28]:
+
+
+from sklearn.metrics import confusion_matrix
+cm = confusion_matrix(y_test, y_pred)
+
+fig, ax = plt.subplots(figsize=(6,6))
+sns.heatmap(cm, annot = True, linewidths = .5, ax = ax)
+
+
+# # K-Nearest Neighbour
+# 
+
+# In[29]:
+
+
+from sklearn.neighbors import KNeighborsClassifier
+
+knn = KNeighborsClassifier(n_neighbors=5)
+knn.fit(X_train, y_train)
+
+
+# In[30]:
+
+
+y_pred = knn.predict(X_test)
+
+
+# In[31]:
+
+
+accuracy = accuracy_score(y_test, y_pred)
+print("Accuracy:", accuracy)
+print('Classification Report:')
+print(classification_report(y_test, y_pred))
+
+
+
+
+from sklearn.metrics import confusion_matrix
+cm = confusion_matrix(y_test, y_pred)
+
+fig, ax = plt.subplots(figsize=(6,6))
+sns.heatmap(cm, annot = True, linewidths = .5, ax = ax)
+
+
+
+
+
+
+
+
+
+
+
+
